@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <pthread.h>
+#include <stdbool.h>
 
 #define MAX_CLIENT 2
 #define NB_THREADS 2
@@ -25,22 +26,21 @@ void * broadcast(void * dS_client) {
     while (1) {
         // Recevoir le message du client
         nb_recv = recv(dSC, buffer, BUFFER_SIZE, 0);
+       
+        printf("buffer: %s %d\n",buffer,strcmp(buffer, "fin") == 0);
         if (nb_recv == -1) {
             perror("Erreur lors de la reception");
             exit(EXIT_FAILURE);
-        }
-        if (nb_recv == 0) {
+        } else if (nb_recv == 0) {
             printf("Client déconnecté\n");
+            break;
+        } else if (strcmp(buffer, "fin") == 0) {  // Si le client envoie "fin", arrêter la discussion pour ce client
+            printf("Fin de la discussion pour client dSC: %d\n", dSC);
             break;
         }
 
         printf("Message recu: %s du client dSC: %d \n", buffer, dSC);
 
-        // Si le client envoie "fin", arrêter la discussion pour ce client
-        if (strcmp(buffer, "fin") == 0) {
-            printf("Fin de la discussion pour client dSC: %d\n", dSC);
-            break;
-        }
 
         // Envoyer le message aux autres clients
         i = 0;
@@ -138,7 +138,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    printf("Both clients disconnected\n");
+    printf("Les clients sont déconnectés\n");
 
     if (close(dS)==-1){
         perror("Erreur lors de la fermeture du socket de acceptation");

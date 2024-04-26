@@ -8,9 +8,9 @@
 #include <pthread.h>
 #include <signal.h>
 
-#define max_length 50
-char msg[max_length];
-char input[max_length]; 
+#define MAX_LEN 50
+char msg[MAX_LEN];
+char input[MAX_LEN]; 
 
 void *readMessage(void *arg) {
     int dS = *(int *)arg;
@@ -19,7 +19,7 @@ void *readMessage(void *arg) {
     while(1) {
 
         // Read message
-        nb_recv = recv(dS, msg, max_length, 0);
+        nb_recv = recv(dS, msg, MAX_LEN, 0);
         if (nb_recv == -1) {
             perror("Erreur lors de la reception du message");
             close(dS);
@@ -46,14 +46,14 @@ void *writeMessage(void *arg) {
     int nb_send;
 
     while(1) {
-        fgets(input, max_length, stdin); 
+        fgets(input, MAX_LEN, stdin); 
         char *pos = strchr(input, '\n');
         *pos = '\0';
 
         printf("Message envoyé: %s\n", input);
         
         // Send message
-        nb_send = send(dS, input, max_length, 0);
+        nb_send = send(dS, input, MAX_LEN, 0);
         if (nb_send == -1) {
             perror("Erreur lors de l'envoi du message");
             close(dS);
