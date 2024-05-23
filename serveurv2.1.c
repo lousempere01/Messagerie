@@ -152,11 +152,8 @@ void *broadcast(void *client)
         
         for (i = 0; i < MAX_CLIENT; i++){
 
-            printf("test1\n");
             if (tab_client[i].socket != -1 && tab_client[i].socket != dSC)
             {
-
-                printf("test2\n");
                 // Fermer le socket du client
                 if (close(tab_client[i].socket) == -1)
                 {

@@ -18,6 +18,21 @@ pthread_mutex_t mutex =
 
 int is_connected = 1; // Drapeau pour indiquer si le client est connecté
 
+void displayManual() {
+    FILE *manuel = fopen("manuel.txt", "r");
+    if (manuel == NULL) {
+        perror("Erreur lors de l'ouverture du manuel");
+        exit(EXIT_FAILURE);
+    }
+
+    char buffer[MAX_LEN];
+    while (fgets(buffer, MAX_LEN, manuel) != NULL) {
+        printf("%s", buffer);
+    }
+
+    fclose(manuel);
+}
+
 void *readMessage(void *arg)
 {
     int dS = *(int *)arg;
@@ -29,38 +44,9 @@ void *readMessage(void *arg)
 
         // Read message
         nb_recv = recv(dS, msg, MAX_LEN, 0);
-        printf("isconnect:%d", is_connected);
         pthread_mutex_lock(&mutex);
         if (!is_connected)
         {
-            break;
-        }
-        pthread_mutex_unlock(&mutex);
-        if (nb_recv == -1)
-        {
-            perror("Erreur lors de la reception du message");
-            pthread_mutex_lock(&mutex);
-            is_connected = 0;
-            pthread_mutex_unlock(&mutex);
-            exit(EXIT_FAILURE);
-        }
-        else if (nb_recv == 0  )
-        {
-            printf("Le serveur a fermé la connexion\n");
-            pthread_mutex_lock(&mutex);
-            is_connected = 0;
-            pthread_mutex_unlock(&mutex);
-            break;
-        }
-
-        // Check if the message is "fin"
-        // If it is, close the socket and exit
-        if (strcmp(msg, "Le serveur est down.") == 0)
-        {
-            pthread_mutex_lock(&mutex);
-            is_connected = 0;
-            pthread_mutex_unlock(&mutex);
-            printf("Un client a interompu la communication\n");
             break;
         }else if (strcmp(msg, "/fin") == 0) {
             printf("Un client a quitté la discussion\n");
@@ -71,8 +57,37 @@ void *readMessage(void *arg)
             char contenu[MAX_LEN];
             sscanf(msg, "/mp %s %[^\n]", destinataire, contenu);
             printf("Message privé envoyé à %s: %s\n", destinataire, contenu);
+        }  else if (strcmp(msg, "/man") == 0) {
+            printf("Manuel :\n");
+            displayManual(); // Afficher le manuel
         }
-        else
+        pthread_mutex_unlock(&mutex);
+        if (nb_recv == -1)
+        {
+            perror("Erreur lors de la reception du message");
+            pthread_mutex_lock(&mutex);
+            is_connected = 0;
+            pthread_mutex_unlock(&mutex);
+            exit(EXIT_FAILURE);
+        }
+        else if (nb_recv == 0)
+        {
+            printf("Le serveur a fermé la connexion\n");
+            pthread_mutex_lock(&mutex);
+            is_connected = 0;
+            pthread_mutex_unlock(&mutex);
+            break;
+        }
+        // Check if the message is "fin"
+        // If it is, close the socket and exit
+        if (strcmp(msg, "Le serveur est down.") == 0)
+        {
+            pthread_mutex_lock(&mutex);
+            is_connected = 0;
+            pthread_mutex_unlock(&mutex);
+            printf("Un client a interompu la communication\n");
+            break;
+        }else
         {
             printf("Message reçu de %s: %s\n", pseudo, msg);
         }
@@ -110,6 +125,14 @@ void *writeMessage(void *arg)
             break;
         }
         pthread_mutex_unlock(&mutex);
+        
+        if (strcmp(input, "/man") == 0)
+        {
+            printf("Manuel : \n");
+            displayManual(); // Afficher le manuel
+            printf("\n");
+            continue; // Ignorer l'envoi au serveur
+        }
 
         printf("Message envoyé: %s\n", input);
 
