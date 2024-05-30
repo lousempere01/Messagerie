@@ -1,1 +1,5 @@
-hello \n
+Bienvenue dans le manuel des commandes, ici vous trouverez quelles sont les commandes, leurs utilités et comment les utiliser.
+
+/kill : commande permettant de quitter la messagerie
+
+/mp <user> <message> : commande permettant d'envoyer le <message> à <user> en privé, seul <user> recevra le message
