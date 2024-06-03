@@ -7,6 +7,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <dirent.h>
 
 #define MAX_CLIENT 20
 #define BUFFER_SIZE 1000
@@ -18,6 +19,12 @@ struct Client {
 
 struct Message {
     char pseudo[BUFFER_SIZE];
+    char contenu[BUFFER_SIZE];
+};
+
+struct Fichier
+{
+    int pseudo;
     char contenu[BUFFER_SIZE];
 };
 
@@ -36,6 +43,71 @@ bool is_pseudo_taken(const char *pseudo) {
     return false;
 }
 
+
+
+void send_file_list(int client_socket){
+    DIR *d;
+    struct dirent *dir;
+    d = opendir("uploads");
+    if (d)
+    {
+        char file_list[BUFFER_SIZE] = {0};
+        while ((dir = readdir(d)) != NULL)
+        {
+            if (dir->d_type == DT_REG)
+            {
+                strcat(file_list, dir->d_name);
+                strcat(file_list, "\n");
+            }
+        }
+        closedir(d);
+        printf("filelist:%s", file_list);
+        char retour[BUFFER_SIZE] = "filelist";
+        send(client_socket, &retour, BUFFER_SIZE, 0);
+        send(client_socket, file_list, strlen(file_list), 0);
+    }
+    else
+    {
+        perror("Erreur d'ouverture du répertoire");
+        send(client_socket, "Erreur d'ouverture du répertoire", 30, 0);
+    }
+}
+
+void *sendFile(void *arg)
+{
+    struct Fichier *envoie = (struct Fichier *)arg;
+    int client_socket = envoie->pseudo;
+    char filename[BUFFER_SIZE];
+    strcpy(filename, envoie->contenu);
+
+    FILE *file = fopen(filename, "r");
+
+    if (file == NULL)
+    {
+        perror("Erreur lors de l'ouverture du fichier");
+        pthread_exit(NULL);
+    }
+
+    // Send file size to client
+    fseek(file, 0, SEEK_END);
+    long filesize = ftell(file);
+    rewind(file);
+    char buffer[BUFFER_SIZE];
+    sprintf(buffer, "%s %ld", filename, filesize);
+    
+    send(client_socket, buffer, strlen(buffer), 0);
+    // Send file content to client
+    size_t bytes_read;
+    while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0) {
+        send(client_socket, buffer, bytes_read, 0);
+    }
+
+    fclose(file);
+    printf("Fichier envoyé: %s\n", filename);
+
+    pthread_exit(NULL);
+}
+
 void *broadcast(void *client) {
     struct Client *data = (struct Client *)client;
     int dSC = data->socket;
@@ -44,6 +116,7 @@ void *broadcast(void *client) {
     int i;
 
     while (1) {
+        //memset(message.contenu, '\0', BUFFER_SIZE);
         nb_recv = recv(dSC, &message.contenu, BUFFER_SIZE, 0);
         if (nb_recv == -1) {
             perror("Erreur lors de la reception");
@@ -53,7 +126,8 @@ void *broadcast(void *client) {
             break;
         }
 
-        if (strcmp(message.contenu, "/kill") == 0) {
+        if (strcmp(message.contenu, "/kill") == 0)
+        {
             char messFin[BUFFER_SIZE] = "Le serveur est down.";
             for (i = 0; i < MAX_CLIENT; i++) {
                 if (tab_client[i].socket != -1) {
@@ -64,11 +138,15 @@ void *broadcast(void *client) {
                 }
             }
             break;
-        } else if (strcmp(message.contenu, "/fin") == 0) {
+        }
+        else if (strcmp(message.contenu, "/fin") == 0)
+        {
             printf("Fin de la discussion pour client : %s\n", data->pseudo);
             break;
-        } else if (strncmp(message.contenu, "/mp", 3) == 0) {
-            char destinataire[BUFFER_SIZE];
+        }
+        else if (strncmp(message.contenu, "/mp", 3) == 0)
+        {
+            char *destinataire;
             char contenu[BUFFER_SIZE];
             sscanf(message.contenu, "/mp %s %[^\n]", destinataire, contenu);
             bool destinataire_trouve = false;
@@ -90,7 +168,58 @@ void *broadcast(void *client) {
                     perror("Erreur lors de l'envoi");
                 }
             }
-        } else {
+        }
+        else if (strncmp(message.contenu, "/file", 5) == 0) {
+            char *file_name;
+            int file_size;
+            int bytes_received;
+            FILE *file;
+            char info[BUFFER_SIZE];
+            char content[BUFFER_SIZE];
+            nb_recv = recv(dSC, &info, sizeof(info) -1, 0);
+            info[BUFFER_SIZE] = '\0';
+            // Extract file name and size from the received buffer
+            sscanf(info, "%s %d", file_name, &file_size);
+            // Create a directory if it doesn't exist
+            system("mkdir -p uploads");
+            // Open a file for writing
+            char file_path[BUFFER_SIZE];
+            snprintf(file_path, sizeof(file_path), "uploads/%s", file_name);
+            file = fopen(file_path, "wb");
+            if (file == NULL)
+            {
+                perror("Failed to open file");
+            }
+
+            // Receive the file content
+            int remaining_bytes = file_size;
+            while (remaining_bytes > 0 && (nb_recv = recv(dSC, content, sizeof(content), 0)) > 0)
+            {
+                printf("content %s\n", content);
+                fwrite(content, sizeof(char), nb_recv, file);
+                remaining_bytes -= nb_recv;
+            }
+            fclose(file);
+
+            printf("File transfer complete\n");
+        }
+        else if (strncmp(message.contenu, "/request",8) == 0){
+            
+            send_file_list(dSC);
+        } else if (strncmp(message.contenu, "/retrieve",9) == 0){
+            struct Fichier envoie;
+            nb_recv = recv(dSC, &envoie.contenu, sizeof(envoie.contenu) - 1, 0);
+            envoie.pseudo = dSC;
+            char envoi[BUFFER_SIZE] = "file";
+            send(dSC, envoi, strlen(envoi), 0);
+            pthread_t envoieFichier;
+            if (pthread_create(&envoieFichier, NULL, sendFile, (void *)&envoie) != 0)
+            {
+                perror("Erreur lors de la création du thread");
+                continue;
+            }
+            
+        } else{
             printf("%s : %s\n", data->pseudo, message.contenu);
             for (i = 0; i < MAX_CLIENT; i++) {
                 if (tab_client[i].socket != -1 && tab_client[i].socket != dSC) {
