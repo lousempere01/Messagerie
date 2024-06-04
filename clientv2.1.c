@@ -82,58 +82,11 @@ void displayManual() {
     fclose(manuel);
 }
 
-void *receiveFile(void *client)
-{
-    int dS = *(int *)client;
-    char *file_name; // Allouer de la mémoire pour stocker le nom du fichier
-    int nb_recv;
-    long file_size;
-    int bytes_received;
-    FILE *file;
-    char info[MAX_LEN];
-    char content[MAX_LEN];
-
-    // Recevoir le nom du fichier et la taille du fichier du serveur
-    recv(dS, info, sizeof(info) - 1, 0);
-    info[MAX_LEN - 1] = '\0';
-
-    // Extraire le nom du fichier et la taille du fichier du tampon reçu
-    sscanf(info, "%s %ld", file_name, &file_size);
-    printf("%s %ld", file_name, file_size);
-
-    // Créer un répertoire s'il n'existe pas déjà
-    system("mkdir -p recu");
-
-    // Ouvrir un fichier pour l'écriture
-    char file_path[MAX_LEN];
-    snprintf(file_path, sizeof(file_path), "recu/%s", file_name);
-    file = fopen(file_path, "wb");
-    if (file == NULL)
-    {
-        perror("Failed to open file");
-        pthread_exit(NULL); // Sortir du thread en cas d'échec
-    }
-
-    // Recevoir le contenu du fichier
-    int remaining_bytes = file_size;
-    while (remaining_bytes > 0 && (nb_recv = recv(dS, content, sizeof(content), 0)) > 0)
-    {
-        fwrite(content, sizeof(char), nb_recv, file);
-        remaining_bytes -= nb_recv;
-    }
-    fclose(file);
-
-    printf("File transfer complete\n");
-
-    pthread_exit(NULL);
-}
-
 void *readMessage(void *arg) {
     int dS = *(int *)arg;
     int nb_recv;
     while (1) {
         nb_recv = recv(dS, msg, MAX_LEN, 0);
-        printf("msg: %s\n", msg);
         pthread_mutex_lock(&mutex);
         if (!is_connected) {
             break;
@@ -152,15 +105,7 @@ void *readMessage(void *arg) {
             nb_recv = recv(dS, msg, MAX_LEN, 0);
             printf("Fichiers récupérables :\n%s\n", msg);
         }
-        else if (strcmp(msg, "file") == 0){
-            printf("testcdfdvdvfvc\n");
-            pthread_t recevoirFichier;
-            if (pthread_create(&recevoirFichier, NULL, receiveFile, (void *)&dS) != 0)
-            {
-                perror("Erreur lors de la création du thread");
-                continue;
-            }
-        } else{
+        else{
             printf("Message reçu: %s\n", msg);
         }
         pthread_mutex_unlock(&mutex);
@@ -230,19 +175,9 @@ void *writeMessage(void *arg) {
             nb_send = send(dS, input, MAX_LEN, 0);
             sendFileInfo(dS, msg);
             sendFile(dS, msg);
-    }
-    else if (strncmp(input, "/retrieve",9) == 0) {
-        printf("Entrez le nom du fichier à récupérer : ");
-        fgets(msg, MAX_LEN, stdin);
-        msg[strcspn(msg, "\n")] = 0;
-        nb_send = send(dS, input, MAX_LEN, 0);
-        nb_send = send(dS, msg, MAX_LEN, 0);
-       
-    } else {
+        } 
 
         printf("Message envoyé: %s\n", input);
-    }
-
 
         nb_send = send(dS, input, MAX_LEN, 0);
         if (nb_send == -1) {

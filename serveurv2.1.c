@@ -22,12 +22,6 @@ struct Message {
     char contenu[BUFFER_SIZE];
 };
 
-struct Fichier
-{
-    int pseudo;
-    char contenu[BUFFER_SIZE];
-};
-
 pthread_t tab_thread[MAX_CLIENT];
 struct Client tab_client[MAX_CLIENT];
 struct sockaddr_in tab_adr[MAX_CLIENT];
@@ -42,8 +36,6 @@ bool is_pseudo_taken(const char *pseudo) {
     }
     return false;
 }
-
-
 
 void send_file_list(int client_socket){
     DIR *d;
@@ -73,41 +65,6 @@ void send_file_list(int client_socket){
     }
 }
 
-void *sendFile(void *arg)
-{
-    struct Fichier *envoie = (struct Fichier *)arg;
-    int client_socket = envoie->pseudo;
-    char filename[BUFFER_SIZE];
-    strcpy(filename, envoie->contenu);
-
-    FILE *file = fopen(filename, "r");
-
-    if (file == NULL)
-    {
-        perror("Erreur lors de l'ouverture du fichier");
-        pthread_exit(NULL);
-    }
-
-    // Send file size to client
-    fseek(file, 0, SEEK_END);
-    long filesize = ftell(file);
-    rewind(file);
-    char buffer[BUFFER_SIZE];
-    sprintf(buffer, "%s %ld", filename, filesize);
-    
-    send(client_socket, buffer, strlen(buffer), 0);
-    // Send file content to client
-    size_t bytes_read;
-    while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0) {
-        send(client_socket, buffer, bytes_read, 0);
-    }
-
-    fclose(file);
-    printf("Fichier envoyé: %s\n", filename);
-
-    pthread_exit(NULL);
-}
-
 void *broadcast(void *client) {
     struct Client *data = (struct Client *)client;
     int dSC = data->socket;
@@ -116,7 +73,7 @@ void *broadcast(void *client) {
     int i;
 
     while (1) {
-        //memset(message.contenu, '\0', BUFFER_SIZE);
+        memset(message.contenu, '\0', BUFFER_SIZE);
         nb_recv = recv(dSC, &message.contenu, BUFFER_SIZE, 0);
         if (nb_recv == -1) {
             perror("Erreur lors de la reception");
@@ -125,6 +82,7 @@ void *broadcast(void *client) {
             printf("Client déconnecté\n");
             break;
         }
+        printf("message %s", message.contenu);
 
         if (strcmp(message.contenu, "/kill") == 0)
         {
@@ -146,7 +104,7 @@ void *broadcast(void *client) {
         }
         else if (strncmp(message.contenu, "/mp", 3) == 0)
         {
-            char *destinataire;
+            char destinataire[BUFFER_SIZE];
             char contenu[BUFFER_SIZE];
             sscanf(message.contenu, "/mp %s %[^\n]", destinataire, contenu);
             bool destinataire_trouve = false;
@@ -170,7 +128,7 @@ void *broadcast(void *client) {
             }
         }
         else if (strncmp(message.contenu, "/file", 5) == 0) {
-            char *file_name;
+            char file_name[BUFFER_SIZE];
             int file_size;
             int bytes_received;
             FILE *file;
@@ -180,8 +138,11 @@ void *broadcast(void *client) {
             info[BUFFER_SIZE] = '\0';
             // Extract file name and size from the received buffer
             sscanf(info, "%s %d", file_name, &file_size);
+
+
             // Create a directory if it doesn't exist
             system("mkdir -p uploads");
+
             // Open a file for writing
             char file_path[BUFFER_SIZE];
             snprintf(file_path, sizeof(file_path), "uploads/%s", file_name);
@@ -206,19 +167,9 @@ void *broadcast(void *client) {
         else if (strncmp(message.contenu, "/request",8) == 0){
             
             send_file_list(dSC);
-        } else if (strncmp(message.contenu, "/retrieve",9) == 0){
-            struct Fichier envoie;
-            nb_recv = recv(dSC, &envoie.contenu, sizeof(envoie.contenu) - 1, 0);
-            envoie.pseudo = dSC;
-            char envoi[BUFFER_SIZE] = "file";
-            send(dSC, envoi, strlen(envoi), 0);
-            pthread_t envoieFichier;
-            if (pthread_create(&envoieFichier, NULL, sendFile, (void *)&envoie) != 0)
-            {
-                perror("Erreur lors de la création du thread");
-                continue;
-            }
-            
+        } else if (strcmp(message.contenu, "/request") == 0){
+
+            send_file_list(dSC);
         } else{
             printf("%s : %s\n", data->pseudo, message.contenu);
             for (i = 0; i < MAX_CLIENT; i++) {
